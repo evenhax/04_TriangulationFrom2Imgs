@@ -14,6 +14,7 @@ class MyTriDemo {
 public:
     MyTriDemo();
     void triangleSteps();
+
 private:
 
     MyFileUtils myFileTool;

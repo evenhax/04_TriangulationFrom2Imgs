@@ -4,6 +4,7 @@
 
 
 #include <opencv/cv.hpp>
+#include <fstream>
 #include "StereoUtils.h"
 
 using namespace std;
@@ -36,19 +37,19 @@ void StereoUtils::findCameraMatricesFromMatch(
     Features alignedRight;
     MatchingUtils::GetAlignedPointsFromMatch(featuresLeft, featuresRight, matches, alignedLeft, alignedRight);
 
-    cv::Mat E, R, t;
+    cv::Mat myE, myR, myT;
     cv::Mat mask;
-    E = findEssentialMat(alignedLeft.points, alignedRight.points, focal, pp, cv::RANSAC, 0.99, 1.5, mask);
+    myE = findEssentialMat(alignedLeft.points, alignedRight.points, focal, pp, cv::RANSAC, 0.99, 1.5, mask);
 
     //Find Pright camera matrix from the essential matrix
     //Cheirality check (all points are in front of camera) is performed internally.
-    recoverPose(E, alignedLeft.points, alignedRight.points, R, t, focal, pp, mask);
+    recoverPose(myE, alignedLeft.points, alignedRight.points, myR, myT, focal, pp, mask);
 
     //TODO: stratify over Pleft
     Pleft = cv::Matx34f::eye();
-    Pright = cv::Matx34f(R.at<double>(0, 0), R.at<double>(0, 1), R.at<double>(0, 2), t.at<double>(0),
-                         R.at<double>(1, 0), R.at<double>(1, 1), R.at<double>(1, 2), t.at<double>(1),
-                         R.at<double>(2, 0), R.at<double>(2, 1), R.at<double>(2, 2), t.at<double>(2));
+    Pright = cv::Matx34f(myR.at<double>(0, 0), myR.at<double>(0, 1), myR.at<double>(0, 2), myT.at<double>(0),
+                         myR.at<double>(1, 0), myR.at<double>(1, 1), myR.at<double>(1, 2), myT.at<double>(1),
+                         myR.at<double>(2, 0), myR.at<double>(2, 1), myR.at<double>(2, 2), myT.at<double>(2));
 
     //populate pruned matches
     prunedMatches.clear();
@@ -58,6 +59,10 @@ void StereoUtils::findCameraMatricesFromMatch(
         }
     }
 
+    ofstream fout(myOutputPath+"cameraMatrix.txt");
+    fout << myE <<endl;
+    fout << myR << endl;
+    fout << myT <<endl;
 
     //return true;
 }
@@ -111,27 +116,8 @@ void StereoUtils::triangulateViews(
     std::vector<cv::Point2f> projectedOnRight(alignedRight.points.size());
     projectPoints(points3d, rvecRight, tvecRight, intrinsics.K, cv::Mat(), projectedOnRight);
 
-//    {
-//		Mat outLeft(2048, 3072, CV_8UC3, Colors::BLACK);
-//		drawKeypoints(outLeft, alignedLeft.keyPoints, outLeft, Colors::RED);
-//		drawKeypoints(outLeft, PointsToKeyPoints(projectedOnLeft), outLeft, Colors::GREEN);
-//		Mat outRight(2048, 3072, CV_8UC3, Colors::BLACK);
-//		drawKeypoints(outRight, alignedRight.keyPoints, outRight, Colors::RED);
-//		drawKeypoints(outRight, PointsToKeyPoints(projectedOnRight), outRight, Colors::GREEN);
-//		Mat tmp;
-//		hconcat(outLeft, outRight, tmp);
-//		imshow("features", tmp, 0.25);
-//		waitKey(0);
-//    }
-
-    //Note: cheirality check (all points z > 0) was already performed at camera pose calculation
 
     for (size_t i = 0; i < points3d.rows; i++) {
-        //check if point reprojection error is small enough
-        if (norm(projectedOnLeft[i] - alignedLeft.points[i]) > MIN_REPROJECTION_ERROR or
-            norm(projectedOnRight[i] - alignedRight.points[i]) > MIN_REPROJECTION_ERROR) {
-            continue;
-        }
 
         Point3DInMap p;
         p.p = cv::Point3f(points3d.at<float>(i, 0),
@@ -145,6 +131,9 @@ void StereoUtils::triangulateViews(
 
         pointCloud.push_back(p);
     }
+    cout<<pointCloud.size()<<endl;
+    ofstream fout(myOutputPath+"pointcloud.ply");
+    fout << reinterpret_cast<Range &>(pointCloud) << endl;
 
     //return true;
 }
